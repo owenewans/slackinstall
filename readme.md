@@ -46,6 +46,12 @@ verified before `installpkg`; use a trusted mirror. See [Limitations](#limitatio
 curl -fsSL https://raw.githubusercontent.com/owenewans/slackinstall/master/install.sh | sh
 ```
 
+or, from the self-hosted mirror:
+
+```sh
+curl -fsSL https://src.owenewans.org/slackinstall/-/install.sh?raw | sh
+```
+
 ## Usage
 
 ```sh
