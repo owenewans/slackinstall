@@ -38,7 +38,7 @@ pub fn run(gpa: std.mem.Allocator, io: std.Io, out: *std.Io.Writer, cfg: config.
     const swap_part = try layout.swapPartition(allocator);
     const root_part = try layout.rootPartition(allocator);
 
-    try ensureNetwork(io, progress, executor);
+    try ensureNetwork(io, progress, executor, cfg.network_interface);
 
     progress.step("partitioning {s}", .{cfg.disk});
     const disk_steps = try disk.buildSteps(allocator, layout);
@@ -172,18 +172,19 @@ fn waitForPath(io: std.Io, progress: Progress, path: []const u8) !void {
     return error.PartitionNodeNeverAppeared;
 }
 
-fn ensureNetwork(io: std.Io, progress: Progress, executor: disk.Executor) !void {
-    progress.step("configuring network (dhcp on eth0)", .{});
+fn ensureNetwork(io: std.Io, progress: Progress, executor: disk.Executor, interface: []const u8) !void {
+    progress.step("configuring network (dhcp on {s})", .{interface});
 
     try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = udhcpc_hook_path, .data = udhcpc_hook_script });
     try executor.run(.{ .argv = &.{ "chmod", "+x", udhcpc_hook_path }, .description = "make dhcp hook executable" });
 
+    const udhcpc_argv = [_][]const u8{ "udhcpc", "-i", interface, "-s", udhcpc_hook_path, "-n", "-q" };
     executor.run(.{
-        .argv = &.{ "udhcpc", "-i", "eth0", "-s", udhcpc_hook_path, "-n", "-q" },
-        .description = "obtain dhcp lease and configure eth0",
+        .argv = &udhcpc_argv,
+        .description = "obtain dhcp lease and configure interface",
     }) catch |e| {
         // not fatal here: a static/pre-configured network, or a machine
-        // with no eth0 at all (e.g. wifi-only), should still be able to
+        // with no interface by this name at all, should still be able to
         // proceed if the caller already has working connectivity.
         progress.step("dhcp configuration failed ({t}), continuing with existing network state", .{e});
     };
@@ -235,7 +236,7 @@ fn writeTargetConfig(allocator: std.mem.Allocator, io: std.Io, progress: Progres
     const hosts_content = try net.renderHosts(allocator, cfg.hostname);
     try writeTargetFile(io, "/etc/hosts", hosts_content);
 
-    const rc_inet1 = try net.renderRcInet1Conf(allocator, .{ .dhcp = .{ .interface = "eth0" } });
+    const rc_inet1 = try net.renderRcInet1Conf(allocator, .{ .dhcp = .{ .interface = cfg.network_interface } });
     try writeTargetFile(io, "/etc/rc.d/rc.inet1.conf", rc_inet1);
     try writeTargetFile(io, "/etc/dhcpcd.conf", net.renderDhcpcdConf());
 

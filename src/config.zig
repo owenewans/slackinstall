@@ -25,6 +25,10 @@ pub const Config = struct {
     dns_mode: DnsMode = .plain,
     dns_servers: []const []const u8 = &.{ "9.9.9.9", "149.112.112.112" },
     package_mirror: []const u8 = default_package_mirror,
+    /// The interface DHCP runs on during install and that the target's
+    /// rc.inet1.conf is written for, e.g. "eth0" or "enp0s3". Only DHCP is
+    /// supported; static addressing is not implemented.
+    network_interface: []const u8 = "eth0",
     /// Plaintext used only to generate a SHA-512 hash in the live environment;
     /// the plaintext itself is never written into the target filesystem. If
     /// null, root stays locked until a password is set later.
@@ -41,6 +45,13 @@ pub const Config = struct {
             return error.InvalidPackageMirror;
         }
         if (self.swap_mb == 0) return error.InvalidSwapSize;
+        if (self.network_interface.len == 0 or self.network_interface.len > 15) {
+            return error.InvalidNetworkInterface;
+        }
+        for (self.network_interface) |c| {
+            const ok = std.ascii.isAlphanumeric(c) or c == '-' or c == '.' or c == '_';
+            if (!ok) return error.InvalidNetworkInterface;
+        }
         if (self.root_password) |password| {
             if (password.len == 0 or std.mem.indexOfAny(u8, password, "\r\n") != null) {
                 return error.InvalidRootPassword;
@@ -73,6 +84,7 @@ pub const RawConfig = struct {
     package_mirror: []const u8 = default_package_mirror,
     root_password: ?[]const u8 = null,
     swap_mb: u32 = 2048,
+    network_interface: []const u8 = "eth0",
 
     pub fn toConfig(self: RawConfig) !Config {
         const p = profile.Profile.parseName(self.profile) orelse return error.InvalidProfile;
@@ -86,6 +98,7 @@ pub const RawConfig = struct {
             .package_mirror = self.package_mirror,
             .root_password = self.root_password,
             .swap_mb = self.swap_mb,
+            .network_interface = self.network_interface,
         };
     }
 };
@@ -132,6 +145,22 @@ test "validate rejects zero swap and unusable root passwords" {
 
     cfg.root_password = "first\nsecond";
     try std.testing.expectError(error.InvalidRootPassword, cfg.validate());
+}
+
+test "validate rejects unusable network interface names" {
+    var cfg: Config = .{
+        .disk = "/dev/sda",
+        .hostname = "box",
+        .profile = .minimal,
+        .network_interface = "",
+    };
+    try std.testing.expectError(error.InvalidNetworkInterface, cfg.validate());
+
+    cfg.network_interface = "eth0; rm -rf /";
+    try std.testing.expectError(error.InvalidNetworkInterface, cfg.validate());
+
+    cfg.network_interface = "enp0s3";
+    try cfg.validate();
 }
 
 test "RawConfig.toConfig rejects unknown profile" {

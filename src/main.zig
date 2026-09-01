@@ -210,6 +210,32 @@ fn runInteractiveInstall(
         else => .desktop,
     };
 
+    // network interface selection: read real interfaces from /sys/class/net
+    // instead of assuming eth0, since virtio/real NICs commonly show up as
+    // enpXsY or similar. static addressing is not implemented, only which
+    // interface DHCP runs on.
+    const raw_interfaces = readNetworkInterfaceNames(allocator, io) catch |e| {
+        try err_out.print("error: could not read /sys/class/net: {t}\n", .{e});
+        return 1;
+    };
+    defer {
+        for (raw_interfaces) |n| allocator.free(n);
+        allocator.free(raw_interfaces);
+    }
+    const interfaces = try tui.parseInterfaces(allocator, raw_interfaces);
+    defer {
+        for (interfaces) |n| allocator.free(n);
+        allocator.free(interfaces);
+    }
+
+    const interface: []const u8 = if (interfaces.len == 0)
+        try allocator.dupe(u8, "eth0")
+    else iface_blk: {
+        const idx = try session.menu("select a network interface for dhcp:", interfaces, 0);
+        break :iface_blk try allocator.dupe(u8, interfaces[idx]);
+    };
+    defer allocator.free(interface);
+
     const dns_idx = try session.menu("select a DNS mode:", &.{
         "plain - classic resolv.conf",
         "dot   - DNS-over-TLS via unbound",
@@ -238,6 +264,7 @@ fn runInteractiveInstall(
         .dns_mode = dns_mode,
         .swap_mb = swap_mb,
         .root_password = root_password,
+        .network_interface = interface,
     };
     cfg.validate() catch |e| {
         try err_out.print("error: invalid configuration: {t}\n", .{e});
@@ -272,6 +299,29 @@ fn readProcPartitions(allocator: std.mem.Allocator, io: std.Io) ![]u8 {
     return reader.interface.allocRemaining(allocator, .limited(1 << 20));
 }
 
+/// Lists raw entry names under /sys/class/net (unfiltered, including "lo").
+/// Returns an empty slice if sysfs isn't mounted rather than erroring, since
+/// some minimal live environments may not have it.
+fn readNetworkInterfaceNames(allocator: std.mem.Allocator, io: std.Io) ![][]const u8 {
+    var list: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (list.items) |n| allocator.free(n);
+        list.deinit(allocator);
+    }
+
+    var dir = std.Io.Dir.openDirAbsolute(io, "/sys/class/net", .{ .iterate = true }) catch |e| switch (e) {
+        error.FileNotFound => return list.toOwnedSlice(allocator),
+        else => return e,
+    };
+    defer dir.close(io);
+
+    var it = dir.iterate();
+    while (try it.next(io)) |entry| {
+        try list.append(allocator, try allocator.dupe(u8, entry.name));
+    }
+    return list.toOwnedSlice(allocator);
+}
+
 fn printPlan(allocator: std.mem.Allocator, out: anytype, cfg: config.Config) !void {
     try out.print("slackinstall plan for {s} on {s}\n", .{ cfg.hostname, cfg.disk });
     try out.print("profile: {s}\n\n", .{@tagName(cfg.profile)});
@@ -293,6 +343,7 @@ fn printPlan(allocator: std.mem.Allocator, out: anytype, cfg: config.Config) !vo
     }
     try out.print("\npackages: {d} total\n", .{list.len});
     try out.print("package mirror: {s}\n", .{cfg.package_mirror});
+    try out.print("network interface: {s} (dhcp)\n", .{cfg.network_interface});
 
     try out.print("\ndns mode: {s}\n", .{@tagName(cfg.dns_mode)});
 }

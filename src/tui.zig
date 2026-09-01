@@ -226,3 +226,45 @@ test "Disk.devicePath formats /dev path" {
     defer allocator.free(path);
     try std.testing.expectEqualStrings("/dev/sda", path);
 }
+
+/// Filters raw entries from /sys/class/net down to real, selectable network
+/// interfaces: excludes loopback, and sorts for a stable menu order.
+/// Caller owns the returned slice; each name is a duplicate of the
+/// corresponding input.
+pub fn parseInterfaces(allocator: std.mem.Allocator, names: []const []const u8) ![][]const u8 {
+    var list: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (list.items) |n| allocator.free(n);
+        list.deinit(allocator);
+    }
+    for (names) |name| {
+        if (std.mem.eql(u8, name, "lo")) continue;
+        try list.append(allocator, try allocator.dupe(u8, name));
+    }
+    const owned = try list.toOwnedSlice(allocator);
+    std.mem.sort([]const u8, owned, {}, lessThanStr);
+    return owned;
+}
+
+fn lessThanStr(_: void, a: []const u8, b: []const u8) bool {
+    return std.mem.lessThan(u8, a, b);
+}
+
+test "parseInterfaces excludes loopback and sorts" {
+    const allocator = std.testing.allocator;
+    const names = try parseInterfaces(allocator, &.{ "eth0", "lo", "wlan0" });
+    defer {
+        for (names) |n| allocator.free(n);
+        allocator.free(names);
+    }
+    try std.testing.expectEqual(@as(usize, 2), names.len);
+    try std.testing.expectEqualStrings("eth0", names[0]);
+    try std.testing.expectEqualStrings("wlan0", names[1]);
+}
+
+test "parseInterfaces returns empty for loopback-only input" {
+    const allocator = std.testing.allocator;
+    const names = try parseInterfaces(allocator, &.{"lo"});
+    defer allocator.free(names);
+    try std.testing.expectEqual(@as(usize, 0), names.len);
+}

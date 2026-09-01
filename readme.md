@@ -52,6 +52,13 @@ or, from the self-hosted mirror:
 curl -fsSL https://src.owenewans.org/slackinstall/-/install.sh?raw | sh
 ```
 
+The official Slackware install DVD's live environment ships busybox `wget`,
+not `curl`; from that shell, use:
+
+```sh
+wget -q -O - "https://src.owenewans.org/slackinstall/-/install.sh?raw" | sh
+```
+
 ## Usage
 
 ```sh
@@ -79,9 +86,15 @@ slackinstall apply --config config.json -y
   "dns_servers": ["9.9.9.9", "1.1.1.1"],
   "package_mirror": "http://slackware.osuosl.org/slackware64-15.0/slackware64",
   "swap_mb": 4096,
-  "root_password": "replace-this"
+  "root_password": "replace-this",
+  "network_interface": "eth0"
 }
 ```
+
+`network_interface` selects which NIC DHCP runs on, both during install and
+in the target's `/etc/rc.d/rc.inet1.conf`. `install` detects real interfaces
+from `/sys/class/net` and prompts for one instead of assuming `eth0`; `apply`
+defaults to `eth0` if omitted.
 
 `root_password` is optional. It is hashed with SHA-512 in the live environment
 and plaintext is not written to the target, but the JSON file itself still
@@ -124,8 +137,8 @@ details.
 
 - Slackware64 15.0 package tree only
 - legacy BIOS and LILO only, no UEFI bootloader
-- DHCP on `eth0` only; static networking and interface selection are not yet
-  exposed
+- DHCP only; static addressing is not implemented (interface selection is,
+  see `network_interface` above)
 - downloaded Slackware packages are not checksum-verified yet
 - DoT writes an unbound forward-zone and DoH writes a local-stub template, but
   the required resolver is not auto-installed because it is absent from the
