@@ -1,0 +1,80 @@
+#!/usr/bin/expect -f
+
+foreach name {SLACKWARE_ISO PAYLOAD_ISO DISK_IMAGE INSTALL_LOG QEMU_BIN QEMU_ACCEL} {
+    if {![info exists env($name)]} {
+        puts stderr "error: missing environment variable $name"
+        exit 2
+    }
+}
+
+set timeout 60
+log_file -a $env(INSTALL_LOG)
+
+set command [list $env(QEMU_BIN)]
+if {$env(QEMU_ACCEL) eq "kvm"} {
+    lappend command -enable-kvm
+}
+lappend command \
+    -m 2048 -smp 2 \
+    -cdrom $env(SLACKWARE_ISO) \
+    -drive file=$env(PAYLOAD_ISO),media=cdrom \
+    -drive file=$env(DISK_IMAGE),if=virtio,format=qcow2 \
+    -netdev user,id=net0 -device virtio-net-pci,netdev=net0 \
+    -boot d -nographic
+spawn {*}$command
+
+expect {
+    "will boot in 2 minutes" {}
+    timeout { puts stderr "error: timed out waiting for isolinux"; exit 1 }
+}
+expect {
+    "boot: " {}
+    timeout { puts stderr "error: timed out waiting for boot prompt"; exit 1 }
+}
+foreach character [split "huge.s console=ttyS0,115200n8" ""] {
+    send -- $character
+    after 80
+}
+send -- "\r"
+
+set timeout 300
+expect {
+    "Enter 1 to select a keyboard map" { send "\r"; exp_continue }
+    "login:" { send "root\r" }
+    timeout { puts stderr "error: installer environment did not reach login"; exit 1 }
+}
+set timeout 60
+expect {
+    "# " {}
+    timeout { puts stderr "error: installer root shell not available"; exit 1 }
+}
+send "stty -echo\r"
+expect "# "
+
+send "mkdir -p /mnt/payload; for d in /dev/sr0 /dev/sr1; do mount -t iso9660 \$d /mnt/payload >/dev/null 2>&1 || continue; if test -x /mnt/payload/slackinstall; then break; fi; umount /mnt/payload; done; if test -x /mnt/payload/slackinstall; then echo __PAYLOAD_OK__; else echo __PAYLOAD_FAIL__; fi\r"
+expect {
+    "__PAYLOAD_OK__" {}
+    "__PAYLOAD_FAIL__" { puts stderr "error: QEMU payload CD not found"; exit 1 }
+    timeout { puts stderr "error: timed out locating QEMU payload"; exit 1 }
+}
+expect "# "
+send "cp /mnt/payload/slackinstall /tmp/slackinstall; chmod 755 /tmp/slackinstall; cp /mnt/payload/test-config.json /tmp/test-config.json\r"
+expect "# "
+send "if /tmp/slackinstall plan --config /tmp/test-config.json; then echo __PLAN_OK__; else echo __PLAN_FAIL__; fi\r"
+expect {
+    "__PLAN_OK__" {}
+    "__PLAN_FAIL__" { puts stderr "error: installer plan failed"; exit 1 }
+    timeout { puts stderr "error: installer plan timed out"; exit 1 }
+}
+expect "# "
+
+send "/tmp/slackinstall apply --config /tmp/test-config.json -y >/tmp/install.log 2>&1; status=\$?; tail -120 /tmp/install.log; if test \$status -eq 0; then echo __INSTALL_OK__; else echo __INSTALL_FAIL__; fi\r"
+set timeout 1800
+expect {
+    "__INSTALL_OK__" {}
+    "__INSTALL_FAIL__" { puts stderr "error: installer apply failed"; exit 1 }
+    timeout { puts stderr "error: installer apply timed out"; exit 1 }
+}
+set timeout 60
+send "sync; poweroff -f\r"
+expect eof

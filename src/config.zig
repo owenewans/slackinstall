@@ -3,6 +3,8 @@
 const std = @import("std");
 const profile = @import("pkg/profile.zig");
 
+pub const default_package_mirror = "http://slackware.osuosl.org/slackware64-15.0/slackware64";
+
 pub const DnsMode = enum {
     plain, // classic /etc/resolv.conf nameserver entries
     doh, // DNS-over-HTTPS via a local stub resolver
@@ -22,13 +24,28 @@ pub const Config = struct {
     profile: profile.Profile,
     dns_mode: DnsMode = .plain,
     dns_servers: []const []const u8 = &.{ "9.9.9.9", "149.112.112.112" },
-    root_password_hash: ?[]const u8 = null,
+    package_mirror: []const u8 = default_package_mirror,
+    /// Plaintext used only to generate a SHA-512 hash in the live environment;
+    /// the plaintext itself is never written into the target filesystem. If
+    /// null, root stays locked until a password is set later.
+    root_password: ?[]const u8 = null,
     swap_mb: u32 = 2048,
 
     pub fn validate(self: Config) !void {
         if (self.disk.len == 0) return error.MissingDisk;
         if (self.hostname.len == 0) return error.MissingHostname;
         if (!std.mem.startsWith(u8, self.disk, "/dev/")) return error.InvalidDiskPath;
+        if (!std.mem.startsWith(u8, self.package_mirror, "http://") and
+            !std.mem.startsWith(u8, self.package_mirror, "https://"))
+        {
+            return error.InvalidPackageMirror;
+        }
+        if (self.swap_mb == 0) return error.InvalidSwapSize;
+        if (self.root_password) |password| {
+            if (password.len == 0 or std.mem.indexOfAny(u8, password, "\r\n") != null) {
+                return error.InvalidRootPassword;
+            }
+        }
         for (self.hostname) |c| {
             const ok = std.ascii.isAlphanumeric(c) or c == '-';
             if (!ok) return error.InvalidHostname;
@@ -53,7 +70,8 @@ pub const RawConfig = struct {
     profile: []const u8,
     dns_mode: []const u8 = "plain",
     dns_servers: []const []const u8 = &.{ "9.9.9.9", "149.112.112.112" },
-    root_password_hash: ?[]const u8 = null,
+    package_mirror: []const u8 = default_package_mirror,
+    root_password: ?[]const u8 = null,
     swap_mb: u32 = 2048,
 
     pub fn toConfig(self: RawConfig) !Config {
@@ -65,7 +83,8 @@ pub const RawConfig = struct {
             .profile = p,
             .dns_mode = d,
             .dns_servers = self.dns_servers,
-            .root_password_hash = self.root_password_hash,
+            .package_mirror = self.package_mirror,
+            .root_password = self.root_password,
             .swap_mb = self.swap_mb,
         };
     }
@@ -96,6 +115,23 @@ test "validate accepts sane config" {
         .profile = .server,
     };
     try cfg.validate();
+}
+
+test "validate rejects zero swap and unusable root passwords" {
+    var cfg: Config = .{
+        .disk = "/dev/sda",
+        .hostname = "box",
+        .profile = .minimal,
+        .swap_mb = 0,
+    };
+    try std.testing.expectError(error.InvalidSwapSize, cfg.validate());
+
+    cfg.swap_mb = 2048;
+    cfg.root_password = "";
+    try std.testing.expectError(error.InvalidRootPassword, cfg.validate());
+
+    cfg.root_password = "first\nsecond";
+    try std.testing.expectError(error.InvalidRootPassword, cfg.validate());
 }
 
 test "RawConfig.toConfig rejects unknown profile" {

@@ -5,7 +5,7 @@ const series = @import("series.zig");
 const tagfile = @import("tagfile.zig");
 
 pub const Profile = enum {
-    minimal, // ADD only, base system series (a) plus bare networking (n)
+    minimal, // base ADD set plus verified networking/runtime dependencies
     server, // ADD + REC across base, apps, dev, libs, networking (no X11)
     desktop, // ADD + REC across everything including X11 + xfce + kde
 
@@ -18,7 +18,7 @@ pub const Profile = enum {
 
     pub fn description(self: Profile) []const u8 {
         return switch (self) {
-            .minimal => "base system only: a + n series, ADD packages",
+            .minimal => "base system: a series ADD plus verified networking and runtime dependencies",
             .server => "base, dev, libs, apps, networking: ADD + REC, no X11",
             .desktop => "everything including X11, xfce and kde: ADD + REC",
         };
@@ -26,7 +26,7 @@ pub const Profile = enum {
 
     fn seriesFor(self: Profile) []const series.Series {
         return switch (self) {
-            .minimal => &.{ .a, .n },
+            .minimal => &.{.a},
             .server => &.{ .a, .ap, .d, .l, .n, .t, .tcl },
             .desktop => series.all,
         };
@@ -39,6 +39,37 @@ pub const Profile = enum {
             .opt, .skp => false,
         };
     }
+
+    // Slackware's tagfiles do not encode dependencies across series. Real
+    // boot and ELF-closure tests found this small set is required by the
+    // minimal base, its storage tools and its configured network.
+    // Including the entire `l` series pulls in 400+ unrelated packages such
+    // as GTK, GStreamer and Qt, so keep the verified closure explicit.
+    const minimal_extra_packages: []const []const u8 = &.{
+        "dbus",
+        "dhcpcd",
+        "elogind",
+        "file",
+        "gmp",
+        "iproute2",
+        "iptables",
+        "iputils",
+        "libcap-ng",
+        "libidn2",
+        "libmnl",
+        "libnetfilter_conntrack",
+        "libnfnetlink",
+        "libnftnl",
+        "libnl3",
+        "libpcap",
+        "libunistring",
+        "lz4",
+        "ncurses",
+        "network-scripts",
+        "pcre",
+        "sg3_utils",
+        "zstd",
+    };
 
     /// Returns the sorted, deduplicated package list for this profile.
     /// Caller owns the returned slice and each contained string is a duplicate
@@ -58,6 +89,14 @@ pub const Profile = enum {
             }
         }
 
+        if (self == .minimal) {
+            for (minimal_extra_packages) |name| {
+                if (set.contains(name)) continue;
+                const owned = try allocator.dupe(u8, name);
+                try set.put(owned, {});
+            }
+        }
+
         var list: std.ArrayList([]const u8) = .empty;
         errdefer list.deinit(allocator);
         var it = set.keyIterator();
@@ -73,7 +112,7 @@ pub const Profile = enum {
     }
 };
 
-test "minimal profile is small and has no X11 packages" {
+test "minimal profile stays compact and excludes X11 and dev tools" {
     const allocator = std.testing.allocator;
     const list = try Profile.minimal.packageList(allocator);
     defer {
@@ -82,9 +121,36 @@ test "minimal profile is small and has no X11 packages" {
     }
 
     try std.testing.expect(list.len > 0);
-    try std.testing.expect(list.len < 100);
+    const server_list = try Profile.server.packageList(allocator);
+    defer {
+        for (server_list) |s| allocator.free(s);
+        allocator.free(server_list);
+    }
+    try std.testing.expect(list.len < 200);
+    try std.testing.expect(list.len < server_list.len);
     for (list) |name| {
         try std.testing.expect(!std.mem.eql(u8, name, "xorg-server"));
+        try std.testing.expect(!std.mem.eql(u8, name, "gcc"));
+    }
+}
+
+test "minimal profile includes verified runtime and network dependencies" {
+    // These failures were reproduced in successive real QEMU boots.
+    const allocator = std.testing.allocator;
+    const list = try Profile.minimal.packageList(allocator);
+    defer {
+        for (list) |s| allocator.free(s);
+        allocator.free(list);
+    }
+    for (Profile.minimal_extra_packages) |required| {
+        var found = false;
+        for (list) |name| {
+            if (std.mem.eql(u8, name, required)) {
+                found = true;
+                break;
+            }
+        }
+        try std.testing.expect(found);
     }
 }
 

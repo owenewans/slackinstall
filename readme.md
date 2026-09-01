@@ -11,30 +11,34 @@ default, JSON config for scripted installs.
 
 </div>
 
-Slackware's stock `setup` installer works, but it is menu-heavy, has no
-config-driven install mode, and offers no equivalent to
-[archinstall](https://github.com/archlinux/archinstall)'s minimal/server/desktop
-profiles. `slackinstall` is a single static binary that:
+Slackware's stock `setup` installer works, but it is menu-heavy and has no
+config-driven install mode. `slackinstall` is a single static binary for
+Slackware64 15.0 that:
 
-- builds package lists directly from slackware 15.0's own tagfiles (no
-  re-invented package metadata), collapsed into three profiles: `minimal`,
-  `server`, `desktop`
-- `install` walks through numbered menus (pick a real detected disk, profile,
-  DNS mode, swap size) and shows the exact plan before asking for confirmation
-- `plan`/`apply` take a single JSON config file for scripted, unattended
-  installs (`plan` previews, `apply -y` executes)
-- never touches a disk without confirmation, interactive or explicit
-- generates native slackware config: `/etc/rc.d/rc.inet1.conf`, `/etc/HOSTNAME`,
-  `/etc/lilo.conf`, and an unbound forward-zone stanza for plain, DoT or DoH
-  resolution
+- offers `minimal`, `server` and `desktop` profiles derived from Slackware's
+  native tagfiles and package tree
+- provides an interactive installer that detects real disks and previews the
+  complete plan before confirmation
+- provides `plan` and `apply` commands driven by one JSON file for unattended
+  installs
+- partitions, formats, mounts, downloads packages, configures the target and
+  installs LILO instead of delegating to a dry-run backend
+- writes native Slackware configuration including `fstab`,
+  `/etc/rc.d/rc.inet1.conf`, `/etc/HOSTNAME`, `/etc/hosts`, DNS policy and
+  `/etc/lilo.conf`
+- never erases a disk without interactive confirmation or explicit
+  `-y`/`--confirm`
 
 ## Status
 
-Early. Package profile generation, config validation, disk-plan generation
-and config-file rendering (network, DNS, LILO) are implemented and unit
-tested. Actual privileged execution (`apply` without dry-run: partitioning,
-`installpkg`, chroot, `lilo`) is not wired up yet - `apply` currently always
-runs its disk steps in dry-run mode. See [Roadmap](#roadmap).
+`install` and `apply -y` are real, privileged and destructive. The QEMU smoke
+test starts from a blank virtio disk and the official Slackware64 15.0 DVD,
+installs the 83-package minimal profile, boots it through LILO, logs in with
+the configured root password, and verifies runtime libraries, DHCP, ping,
+DNS persistence, hostname, `fstab`, swap and `/dev/shm`.
+
+Current scope is x86_64, legacy BIOS and LILO. Package checksums are not yet
+verified before `installpkg`; use a trusted mirror. See [Limitations](#limitations).
 
 ## Install
 
@@ -54,7 +58,7 @@ slackinstall profile server
 # scripted: preview a full install plan, no changes made
 slackinstall plan --config config.json
 
-# scripted: execute (currently still dry-run internally, see Status)
+# scripted: execute the destructive install
 slackinstall apply --config config.json -y
 ```
 
@@ -64,55 +68,64 @@ slackinstall apply --config config.json -y
 {
   "disk": "/dev/sda",
   "hostname": "web-01",
-  "profile": "server",
-  "dns_mode": "dot",
+  "profile": "minimal",
+  "dns_mode": "plain",
   "dns_servers": ["9.9.9.9", "1.1.1.1"],
-  "swap_mb": 4096
+  "package_mirror": "http://slackware.osuosl.org/slackware64-15.0/slackware64",
+  "swap_mb": 4096,
+  "root_password": "replace-this"
 }
 ```
 
+`root_password` is optional. It is hashed with SHA-512 in the live environment
+and plaintext is not written to the target, but the JSON file itself still
+contains the secret and should be protected. If omitted, the target root
+account remains locked.
+
 ## Profiles
 
-Profiles are computed at compile time from slackware 15.0's actual `tagfile`
-per disk series (`a`, `ap`, `d`, `l`, `n`, `x`, `xap`, `xfce`, `kde`, ...),
-embedded under `src/data/tagfiles/`.
+Profiles are computed from Slackware 15.0 tagfiles embedded under
+`src/data/tagfiles/`. The package index is frozen to the Slackware64 15.0
+package tree.
 
-| profile   | series included                          | tags        |
-|-----------|-------------------------------------------|-------------|
-| minimal   | `a`, `n`                                   | `ADD`       |
-| server    | `a`, `ap`, `d`, `l`, `n`, `t`, `tcl`        | `ADD`+`REC` |
-| desktop   | every series (adds `x`, `xap`, `xfce`, `kde`) | `ADD`+`REC` |
+| profile | selection |
+|---------|-----------|
+| minimal | `a:ADD` plus an explicit boot, storage and network runtime closure, 83 packages |
+| server | `ADD` and `REC` from `a`, `ap`, `d`, `l`, `n`, `t`, `tcl`, without X11 |
+| desktop | `ADD` and `REC` from every series, including X11, Xfce and KDE |
 
 ## Development
 
 ```sh
 zig build test
 zig build run -- plan --config config.json
+zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe
 ```
 
-Cross-compiling for both slackware architectures:
+The explicit target is important for a portable baseline CPU binary. A default
+native build may use instructions available only on the build machine.
+
+Run the destructive end-to-end test only against its disposable qcow2 image:
 
 ```sh
-zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSmall
-zig build -Dtarget=x86-linux-musl -Doptimize=ReleaseSmall
+SLACKWARE_ISO=/path/to/slackware64-15.0-install-dvd.iso tests/qemu/run.sh
 ```
 
-## Roadmap
+See [`tests/qemu/README.md`](tests/qemu/README.md) for requirements and cache
+details.
 
-Manually verified against `docker.io/vbatts/slackware` (real Slackware 15.0
-userspace, no loop-device access available in this sandbox): the exact
-`sfdisk` script, `mkfs.ext4`/`mkswap` invocations and an `installpkg` run
-against a real package from the `a` series all succeed unmodified. What is
-not wired into the CLI yet:
+## Limitations
 
-- [ ] privileged `apply`: real `sfdisk`/`mkfs`/`mkswap` execution (currently
-      always dry-run; command sequences themselves are verified, see above)
-- [ ] package fetch + `installpkg` inside a target root, driven by `Profile.packageList`
-- [ ] chroot setup and `lilo` install
-- [ ] podman-based end-to-end test harness wired into CI (requires
-      loop-device/`--privileged` access; the manual verification above used a
-      real root filesystem but partitioned a plain file, not a block device)
-- [ ] CI matrix building x86 and x86_64 release binaries
+- Slackware64 15.0 package tree only
+- legacy BIOS and LILO only, no UEFI bootloader
+- DHCP on `eth0` only; static networking and interface selection are not yet
+  exposed
+- downloaded Slackware packages are not checksum-verified yet
+- DoT writes an unbound forward-zone and DoH writes a local-stub template, but
+  the required resolver is not auto-installed because it is absent from the
+  official Slackware 15.0 repository
+- the QEMU smoke test is local and not run in hosted CI because it requires the
+  Slackware install DVD
 
 ## License
 

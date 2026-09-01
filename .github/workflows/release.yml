@@ -1,0 +1,33 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  ZIG_VERSION: 0.16.0
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" | tar -xJ
+          echo "$PWD/zig-x86_64-linux-${ZIG_VERSION}" >> "$GITHUB_PATH"
+      - run: zig build test
+      - run: zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSmall
+      - run: |
+          mv zig-out/bin/slackinstall slackinstall-x86_64-linux-musl
+          sha256sum slackinstall-x86_64-linux-musl > slackinstall-x86_64-linux-musl.sha256
+      - run: >-
+          gh release create "$GITHUB_REF_NAME"
+          slackinstall-x86_64-linux-musl
+          slackinstall-x86_64-linux-musl.sha256
+          --title "$GITHUB_REF_NAME"
+          --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

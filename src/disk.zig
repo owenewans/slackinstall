@@ -6,6 +6,10 @@ const std = @import("std");
 pub const Step = struct {
     argv: []const []const u8,
     description: []const u8,
+    /// Data piped to the command's stdin, e.g. an sfdisk script. sfdisk in
+    /// particular drops into an interactive `>>>` prompt and hangs forever
+    /// if invoked with no script on stdin, so this must not be forgotten.
+    stdin_data: ?[]const u8 = null,
 };
 
 pub const Layout = struct {
@@ -45,6 +49,7 @@ pub fn buildPartitionScript(allocator: std.mem.Allocator, layout: Layout) ![]con
 /// Frees a slice returned by `buildSteps`, including the partition path
 /// strings embedded in the mkfs/mkswap steps.
 pub fn freeSteps(allocator: std.mem.Allocator, steps: []Step) void {
+    if (steps[0].stdin_data) |script| allocator.free(script);
     allocator.free(steps[1].argv[4]); // boot_part
     allocator.free(steps[2].argv[3]); // swap_part
     allocator.free(steps[3].argv[4]); // root_part
@@ -60,11 +65,14 @@ pub fn buildSteps(allocator: std.mem.Allocator, layout: Layout) ![]Step {
     const swap_part = try layout.swapPartition(allocator);
     const root_part = try layout.rootPartition(allocator);
 
+    const partition_script = try buildPartitionScript(allocator, layout);
+
     // argv slices below own `boot_part`/`swap_part`/`root_part` after this
     // point; `freeSteps` frees each argv element individually.
     try steps.append(allocator, .{
         .argv = try allocator.dupe([]const u8, &.{ "sfdisk", layout.disk }),
         .description = "partition disk from generated gpt script",
+        .stdin_data = partition_script,
     });
     try steps.append(allocator, .{
         .argv = try allocator.dupe([]const u8, &.{ "mkfs.ext4", "-F", "-L", "boot", boot_part }),
@@ -95,11 +103,26 @@ pub const Executor = struct {
             try w.print("[dry-run] {s}:", .{step.description});
             for (step.argv) |arg| try w.print(" {s}", .{arg});
             try w.writeAll("\n");
+            if (step.stdin_data) |data| try w.print("[dry-run] stdin:\n{s}", .{data});
             try w.flush();
             return;
         }
 
-        var child = try std.process.spawn(self.io, .{ .argv = step.argv });
+        var child = try std.process.spawn(self.io, .{
+            .argv = step.argv,
+            .stdin = if (step.stdin_data != null) .pipe else .inherit,
+        });
+
+        if (step.stdin_data) |data| {
+            const stdin_file = child.stdin orelse return error.NoStdinPipe;
+            var buf: [512]u8 = undefined;
+            var writer = stdin_file.writer(self.io, &buf);
+            try writer.interface.writeAll(data);
+            try writer.interface.flush();
+            stdin_file.close(self.io);
+            child.stdin = null;
+        }
+
         const term = try child.wait(self.io);
         switch (term) {
             .exited => |code| if (code != 0) return error.CommandFailed,

@@ -44,6 +44,11 @@ pub fn renderRcInet1Conf(allocator: std.mem.Allocator, mode: NetworkMode) ![]con
     };
 }
 
+pub fn renderDhcpcdConf() []const u8 {
+    // DNS is configured separately from the DHCP address and route policy.
+    return "nohook resolv.conf\n";
+}
+
 test "renderRcInet1Conf dhcp mode" {
     const allocator = std.testing.allocator;
     const out = try renderRcInet1Conf(allocator, .{ .dhcp = .{ .interface = "eth0" } });
@@ -62,6 +67,10 @@ test "renderRcInet1Conf static mode includes gateway" {
     defer allocator.free(out);
     try std.testing.expect(std.mem.indexOf(u8, out, "GATEWAY=\"192.168.1.1\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "USE_DHCP[0]=\"no\"") != null);
+}
+
+test "dhcpcd leaves configured DNS servers intact" {
+    try std.testing.expectEqualStrings("nohook resolv.conf\n", renderDhcpcdConf());
 }
 
 test "renderHosts includes hostname on both loopback lines" {

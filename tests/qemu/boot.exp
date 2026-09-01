@@ -1,0 +1,73 @@
+#!/usr/bin/expect -f
+
+foreach name {DISK_IMAGE BOOT_LOG QEMU_BIN QEMU_ACCEL} {
+    if {![info exists env($name)]} {
+        puts stderr "error: missing environment variable $name"
+        exit 2
+    }
+}
+
+set timeout 60
+log_file -a $env(BOOT_LOG)
+
+set command [list $env(QEMU_BIN)]
+if {$env(QEMU_ACCEL) eq "kvm"} {
+    lappend command -enable-kvm
+}
+lappend command \
+    -m 2048 -smp 2 \
+    -drive file=$env(DISK_IMAGE),if=virtio,format=qcow2 \
+    -netdev user,id=net0 -device virtio-net-pci,netdev=net0 \
+    -boot c -nographic
+spawn {*}$command
+
+set timeout 600
+expect {
+    "login:" { send "root\r" }
+    "Kernel panic" { puts stderr "error: installed kernel panicked"; exit 1 }
+    timeout { puts stderr "error: installed system did not reach login"; exit 1 }
+}
+set timeout 30
+expect {
+    "Password:" { send "slackinstall-test\r" }
+    timeout { puts stderr "error: root password prompt not shown"; exit 1 }
+}
+expect {
+    "# " {}
+    "Login incorrect" { puts stderr "error: configured root password was rejected"; exit 1 }
+    timeout { puts stderr "error: root shell not available after login"; exit 1 }
+}
+
+send "stty -echo\r"
+expect "# "
+send "runtime_status=0; for check in '/sbin/ip -Version' '/sbin/tc -Version' '/sbin/dhcpcd --version' '/sbin/udevadm --version' 'ps --version' 'more --version' 'setpriv --version' 'zstd --version' 'sdparm --version' 'iptables --version'; do sh -c \"\$check\" >/tmp/runtime-check 2>&1 || { cat /tmp/runtime-check; runtime_status=1; }; done; if test \$runtime_status -eq 0; then echo __RUNTIME_OK__; else echo __RUNTIME_FAIL__; fi; if ip -4 addr show dev eth0 | grep -q '10.0.2.15' && ip route | grep -q '^default ' && ping -c 1 -W 3 10.0.2.2 >/dev/null; then echo __NETWORK_OK__; else echo __NETWORK_FAIL__; fi; if grep -q '^nameserver 9.9.9.9\$' /etc/resolv.conf && grep -q '^nohook resolv.conf\$' /etc/dhcpcd.conf; then echo __DNS_OK__; else cat /etc/resolv.conf /etc/dhcpcd.conf; echo __DNS_FAIL__; fi; if mount | grep -q 'on /dev/shm '; then echo __DEV_SHM_OK__; else echo __DEV_SHM_FAIL__; fi; if grep -q 'LABEL=root.*/.*ext4' /etc/fstab && grep -q 'LABEL=boot.*/boot.*ext4' /etc/fstab && grep -q 'LABEL=swap.*none.*swap' /etc/fstab && grep -q '/dev/vda2' /proc/swaps; then echo __STORAGE_OK__; else cat /etc/fstab /proc/swaps; echo __STORAGE_FAIL__; fi; if test \"\$(hostname)\" = qemu-test && test \"\$(cat /etc/HOSTNAME)\" = qemu-test; then echo __IDENTITY_OK__; else echo __IDENTITY_FAIL__; fi; echo __CHECKS_DONE__\r"
+
+foreach check {
+    {__RUNTIME_OK__ __RUNTIME_FAIL__ "runtime dependency"}
+    {__NETWORK_OK__ __NETWORK_FAIL__ "network"}
+    {__DNS_OK__ __DNS_FAIL__ "DNS persistence"}
+    {__DEV_SHM_OK__ __DEV_SHM_FAIL__ "/dev/shm"}
+    {__STORAGE_OK__ __STORAGE_FAIL__ "storage"}
+    {__IDENTITY_OK__ __IDENTITY_FAIL__ "hostname"}
+} {
+    lassign $check ok fail description
+    expect {
+        $ok {}
+        $fail { puts stderr "error: $description check failed"; exit 1 }
+        timeout { puts stderr "error: $description check timed out"; exit 1 }
+    }
+}
+expect "__CHECKS_DONE__"
+expect "# "
+send "poweroff -f\r"
+expect eof
+log_file
+
+set file [open $env(BOOT_LOG) r]
+set output [read $file]
+close $file
+if {[string first "error while loading shared libraries" $output] >= 0} {
+    puts stderr "error: boot log contains a dynamic-library loader failure"
+    exit 1
+}
+puts "QEMU boot checks passed"

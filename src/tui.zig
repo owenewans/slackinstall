@@ -78,6 +78,43 @@ pub const Session = struct {
         }
     }
 
+    /// Prompts twice for a password with terminal echo disabled, retrying
+    /// until both entries match. Caller owns the returned slice.
+    pub fn password(self: Session, prompt: []const u8) ![]const u8 {
+        while (true) {
+            const first = try self.hiddenLine(prompt);
+            const second = try self.hiddenLine("confirm password");
+            if (std.mem.eql(u8, first, second)) {
+                self.allocator.free(second);
+                if (first.len == 0) {
+                    self.allocator.free(first);
+                    try self.print("password cannot be empty\n", .{});
+                    continue;
+                }
+                return first;
+            }
+            self.allocator.free(first);
+            self.allocator.free(second);
+            try self.print("passwords did not match, try again\n", .{});
+        }
+    }
+
+    fn hiddenLine(self: Session, prompt: []const u8) ![]u8 {
+        const stdin_fd = std.posix.STDIN_FILENO;
+        const original = std.posix.tcgetattr(stdin_fd) catch null;
+        if (original) |orig| {
+            var raw = orig;
+            raw.lflag.ECHO = false;
+            std.posix.tcsetattr(stdin_fd, .NOW, raw) catch {};
+        }
+        defer if (original) |orig| std.posix.tcsetattr(stdin_fd, .NOW, orig) catch {};
+
+        try self.print("{s}: ", .{prompt});
+        const line = try self.readLine();
+        try self.print("\n", .{}); // terminal echo was off, so no newline was shown
+        return line;
+    }
+
     /// Plain y/N confirmation. Defaults to "no" on empty input, which is the
     /// safe default before anything destructive.
     pub fn confirm(self: Session, prompt: []const u8) !bool {

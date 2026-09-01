@@ -6,6 +6,17 @@ const net = @import("net.zig");
 const dns = @import("dns.zig");
 const boot = @import("boot.zig");
 const tui = @import("tui.zig");
+const install = @import("install.zig");
+
+// zig only auto-discovers `test` blocks in the file passed as the test
+// root; without this, every test in every imported file (all of them,
+// until this was caught) is silently skipped by `zig build test` even
+// though `expect(false)` in any of those files still reports a passing
+// build. `refAllDecls` forces every public declaration in this file's
+// imports to be referenced, which pulls their tests in too.
+test {
+    std.testing.refAllDecls(@This());
+}
 
 const usage =
     \\slackinstall - a minimal installer for Slackware.
@@ -121,7 +132,10 @@ pub fn main(init: std.process.Init) !u8 {
         if (apply_mode) {
             try out.writeAll("\n# executing plan\n");
             try out.flush();
-            try executePlan(allocator, io, cfg);
+            install.run(allocator, io, out, cfg) catch |e| {
+                try err_out.print("error: install failed: {t}\n", .{e});
+                return 1;
+            };
         }
 
         return 0;
@@ -214,12 +228,16 @@ fn runInteractiveInstall(
         return 1;
     };
 
+    const root_password = try session.password("root password");
+    defer allocator.free(root_password);
+
     const cfg: config.Config = .{
         .disk = disk_path,
         .hostname = hostname,
         .profile = chosen_profile,
         .dns_mode = dns_mode,
         .swap_mb = swap_mb,
+        .root_password = root_password,
     };
     cfg.validate() catch |e| {
         try err_out.print("error: invalid configuration: {t}\n", .{e});
@@ -240,7 +258,7 @@ fn runInteractiveInstall(
 
     try session.print("\n# executing plan\n", .{});
     try out.flush();
-    try executePlan(allocator, io, cfg);
+    try install.run(allocator, io, out, cfg);
     return 0;
 }
 
@@ -274,17 +292,7 @@ fn printPlan(allocator: std.mem.Allocator, out: anytype, cfg: config.Config) !vo
         allocator.free(list);
     }
     try out.print("\npackages: {d} total\n", .{list.len});
+    try out.print("package mirror: {s}\n", .{cfg.package_mirror});
 
     try out.print("\ndns mode: {s}\n", .{@tagName(cfg.dns_mode)});
-}
-
-fn executePlan(allocator: std.mem.Allocator, io: std.Io, cfg: config.Config) !void {
-    const layout: disk.Layout = .{ .disk = cfg.disk, .swap_mb = cfg.swap_mb };
-    const steps = try disk.buildSteps(allocator, layout);
-    defer disk.freeSteps(allocator, steps);
-    // dry_run stays true here deliberately: real block-device execution needs
-    // root, a target block device and package installer wiring that isn't
-    // implemented yet. see readme.md roadmap.
-    const executor: disk.Executor = .{ .allocator = allocator, .io = io, .dry_run = true };
-    for (steps) |s| try executor.run(s);
 }
