@@ -68,6 +68,15 @@ not `curl`; from that shell, use:
 wget -q -O - "https://src.owenewans.org/slackinstall/-/install.sh?raw" | sh
 ```
 
+`install.sh` downloads the release binary from GitHub by default. If that
+fails - some minimal TLS clients (e.g. BusyBox `wget`'s built-in TLS in a
+bare Slackware live environment) can't complete a handshake with GitHub's
+release CDN - it automatically retries once through a small live
+pass-through proxy at `src.owenewans.org`, with no extra flags needed. The
+proxy re-fetches the exact requested asset from GitHub on every request, so
+it never serves anything stale. Set `SLACKINSTALL_DOWNLOAD_BASE` to skip
+both and use your own source instead.
+
 ## Usage
 
 ```sh

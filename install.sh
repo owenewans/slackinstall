@@ -17,12 +17,28 @@ case "$(uname -m)" in
 esac
 
 ASSET="slackinstall-$TARGET"
+
+# A user-supplied download base is used as-is, with no automatic fallback,
+# since they've explicitly chosen where to fetch from. Otherwise GitHub
+# Releases is the default source, with an automatic retry through a small
+# live pass-through proxy if that fails - some environments (e.g. BusyBox
+# wget's minimal TLS client in a bare Slackware live install) can fail to
+# fetch from GitHub's release CDN for reasons a shell script can't work
+# around directly (TLS version/cipher support, TLS fingerprint filtering,
+# etc.), so this self-heals without the caller needing to know about it or
+# pass any extra flags. The proxy fetches live from GitHub on every request
+# (see https://github.com/owenewans/slackinstall/blob/master/readme.md) so
+# it can't serve a stale binary.
+MIRROR_BASE=${SLACKINSTALL_MIRROR_BASE:-http://src.owenewans.org/gh-release}
 if [ -n "${SLACKINSTALL_DOWNLOAD_BASE:-}" ]; then
-    BASE_URL=${SLACKINSTALL_DOWNLOAD_BASE%/}
+    PRIMARY_BASE=${SLACKINSTALL_DOWNLOAD_BASE%/}
+    FALLBACK_BASE=""
 elif [ "$VERSION" = latest ]; then
-    BASE_URL="https://github.com/$REPOSITORY/releases/latest/download"
+    PRIMARY_BASE="https://github.com/$REPOSITORY/releases/latest/download"
+    FALLBACK_BASE="$MIRROR_BASE/latest"
 else
-    BASE_URL="https://github.com/$REPOSITORY/releases/download/$VERSION"
+    PRIMARY_BASE="https://github.com/$REPOSITORY/releases/download/$VERSION"
+    FALLBACK_BASE="$MIRROR_BASE/$VERSION"
 fi
 
 TEMP_DIR=$(mktemp -d)
@@ -31,7 +47,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-download() {
+fetch() {
     url=$1
     destination=$2
     if command -v curl >/dev/null 2>&1; then
@@ -44,9 +60,23 @@ download() {
     fi
 }
 
+download() {
+    name=$1
+    destination=$2
+    if fetch "$PRIMARY_BASE/$name" "$destination"; then
+        return 0
+    fi
+    if [ -n "$FALLBACK_BASE" ]; then
+        printf 'primary download of %s failed, retrying via mirror\n' "$name" >&2
+        fetch "$FALLBACK_BASE/$name" "$destination"
+        return $?
+    fi
+    return 1
+}
+
 printf 'downloading %s (%s)\n' "$ASSET" "$VERSION"
-download "$BASE_URL/$ASSET" "$TEMP_DIR/$ASSET"
-download "$BASE_URL/$ASSET.sha256" "$TEMP_DIR/$ASSET.sha256"
+download "$ASSET" "$TEMP_DIR/$ASSET" || { printf 'error: failed to download %s\n' "$ASSET" >&2; exit 1; }
+download "$ASSET.sha256" "$TEMP_DIR/$ASSET.sha256" || { printf 'error: failed to download %s.sha256\n' "$ASSET" >&2; exit 1; }
 
 if command -v sha256sum >/dev/null 2>&1; then
     (cd "$TEMP_DIR" && sha256sum -c "$ASSET.sha256")
