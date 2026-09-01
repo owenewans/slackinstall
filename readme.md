@@ -93,10 +93,19 @@ zig build -Dtarget=x86-linux-musl -Doptimize=ReleaseSmall
 
 ## Roadmap
 
-- [ ] privileged `apply`: real `sfdisk`/`mkfs`/`mkswap` execution
-- [ ] package fetch + `installpkg` inside a target root
+Manually verified against `docker.io/vbatts/slackware` (real Slackware 15.0
+userspace, no loop-device access available in this sandbox): the exact
+`sfdisk` script, `mkfs.ext4`/`mkswap` invocations and an `installpkg` run
+against a real package from the `a` series all succeed unmodified. What is
+not wired into the CLI yet:
+
+- [ ] privileged `apply`: real `sfdisk`/`mkfs`/`mkswap` execution (currently
+      always dry-run; command sequences themselves are verified, see above)
+- [ ] package fetch + `installpkg` inside a target root, driven by `Profile.packageList`
 - [ ] chroot setup and `lilo` install
-- [ ] podman-based end-to-end test harness against a slackware 15.0 rootfs
+- [ ] podman-based end-to-end test harness wired into CI (requires
+      loop-device/`--privileged` access; the manual verification above used a
+      real root filesystem but partitioned a plain file, not a block device)
 - [ ] CI matrix building x86 and x86_64 release binaries
 
 ## License
