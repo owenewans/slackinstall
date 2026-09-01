@@ -5,17 +5,21 @@ const disk = @import("disk.zig");
 const net = @import("net.zig");
 const dns = @import("dns.zig");
 const boot = @import("boot.zig");
+const tui = @import("tui.zig");
 
 const usage =
-    \\slackinstall - a minimal, non-interactive-friendly installer for Slackware.
+    \\slackinstall - a minimal installer for Slackware.
     \\
     \\usage:
-    \\  slackinstall plan   --config <file.json>   print the full install plan and exit
-    \\  slackinstall apply  --config <file.json> --yes-i-am-sure   execute the plan
-    \\  slackinstall profile <minimal|server|desktop>   list packages for a profile
+    \\  slackinstall install                  interactive, menu-driven install
+    \\  slackinstall plan   --config <file>    print the install plan from a json config
+    \\  slackinstall apply  --config <file> -y execute a json config (scripted installs)
+    \\  slackinstall profile <minimal|server|desktop>
+    \\                                         list the packages a profile installs
     \\  slackinstall --help
     \\
-    \\by default nothing is written to disk. apply requires --yes-i-am-sure.
+    \\nothing is written to disk without confirmation: `install` asks before
+    \\formatting anything, `apply` requires -y/--confirm.
     \\
 ;
 
@@ -65,6 +69,13 @@ pub fn main(init: std.process.Init) !u8 {
         return 0;
     }
 
+    if (std.mem.eql(u8, command, "install")) {
+        return runInteractiveInstall(allocator, io, out, err_out) catch |e| {
+            try err_out.print("error: {t}\n", .{e});
+            return 1;
+        };
+    }
+
     if (std.mem.eql(u8, command, "plan") or std.mem.eql(u8, command, "apply")) {
         const apply_mode = std.mem.eql(u8, command, "apply");
 
@@ -75,7 +86,7 @@ pub fn main(init: std.process.Init) !u8 {
             if (std.mem.eql(u8, args[i], "--config") and i + 1 < args.len) {
                 config_path = args[i + 1];
                 i += 1;
-            } else if (std.mem.eql(u8, args[i], "--yes-i-am-sure")) {
+            } else if (std.mem.eql(u8, args[i], "-y") or std.mem.eql(u8, args[i], "--confirm")) {
                 confirmed = true;
             }
         }
@@ -101,7 +112,7 @@ pub fn main(init: std.process.Init) !u8 {
         };
 
         if (apply_mode and !confirmed) {
-            try err_out.writeAll("error: apply requires --yes-i-am-sure\n");
+            try err_out.writeAll("error: apply requires -y/--confirm\n");
             return 1;
         }
 
@@ -119,6 +130,128 @@ pub fn main(init: std.process.Init) !u8 {
     try err_out.print("error: unknown command '{s}'\n\n", .{command});
     try err_out.writeAll(usage);
     return 1;
+}
+
+fn runInteractiveInstall(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    out: *std.Io.Writer,
+    err_out: *std.Io.Writer,
+) !u8 {
+    var stdin_buf: [1024]u8 = undefined;
+    var stdin_reader: std.Io.File.Reader = .init(.stdin(), io, &stdin_buf);
+    const session: tui.Session = .{
+        .allocator = allocator,
+        .io = io,
+        .out = out,
+        .in = &stdin_reader.interface,
+    };
+
+    try session.print("slackinstall - interactive install\n", .{});
+
+    // disk selection: read real disks from /proc/partitions instead of
+    // making the user guess or type a raw device path from memory.
+    const proc_partitions = readProcPartitions(allocator, io) catch |e| {
+        try err_out.print("error: could not read /proc/partitions: {t}\n", .{e});
+        return 1;
+    };
+    defer allocator.free(proc_partitions);
+
+    const disks = try tui.parseDisks(allocator, proc_partitions);
+    defer {
+        for (disks) |d| allocator.free(d.name);
+        allocator.free(disks);
+    }
+
+    if (disks.len == 0) {
+        try err_out.writeAll("error: no disks found in /proc/partitions\n");
+        return 1;
+    }
+
+    var disk_labels: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (disk_labels.items) |l| allocator.free(l);
+        disk_labels.deinit(allocator);
+    }
+    for (disks) |d| {
+        const label = try std.fmt.allocPrint(allocator, "/dev/{s} ({d} MB)", .{ d.name, d.size_kb / 1024 });
+        try disk_labels.append(allocator, label);
+    }
+
+    const disk_idx = try session.menu("select a target disk (all data on it will be erased):", disk_labels.items, 0);
+    const disk_path = try disks[disk_idx].devicePath(allocator);
+    defer allocator.free(disk_path);
+
+    const hostname = try session.text("hostname", "slackware");
+    defer allocator.free(hostname);
+
+    const profile_idx = try session.menu("select an install profile:", &.{
+        "minimal - base system only",
+        "server  - base, dev tools, networking, no X11",
+        "desktop - full X11 desktop (xfce/kde)",
+    }, 0);
+    const chosen_profile: profile.Profile = switch (profile_idx) {
+        0 => .minimal,
+        1 => .server,
+        else => .desktop,
+    };
+
+    const dns_idx = try session.menu("select a DNS mode:", &.{
+        "plain - classic resolv.conf",
+        "dot   - DNS-over-TLS via unbound",
+        "doh   - DNS-over-HTTPS via a local stub",
+    }, 0);
+    const dns_mode: config.DnsMode = switch (dns_idx) {
+        0 => .plain,
+        1 => .dot,
+        else => .doh,
+    };
+
+    const swap_str = try session.text("swap size in MB", "2048");
+    defer allocator.free(swap_str);
+    const swap_mb = std.fmt.parseInt(u32, swap_str, 10) catch {
+        try err_out.writeAll("error: swap size must be a number\n");
+        return 1;
+    };
+
+    const cfg: config.Config = .{
+        .disk = disk_path,
+        .hostname = hostname,
+        .profile = chosen_profile,
+        .dns_mode = dns_mode,
+        .swap_mb = swap_mb,
+    };
+    cfg.validate() catch |e| {
+        try err_out.print("error: invalid configuration: {t}\n", .{e});
+        return 1;
+    };
+
+    try session.print("\n--- install plan ---\n", .{});
+    try printPlan(allocator, out, cfg);
+    try out.flush();
+
+    const proceed = try session.confirm(
+        "this will erase all data on the selected disk. continue?",
+    );
+    if (!proceed) {
+        try session.print("aborted, nothing was changed.\n", .{});
+        return 0;
+    }
+
+    try session.print("\n# executing plan\n", .{});
+    try out.flush();
+    try executePlan(allocator, io, cfg);
+    return 0;
+}
+
+fn readProcPartitions(allocator: std.mem.Allocator, io: std.Io) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, "/proc/partitions", .{});
+    defer file.close(io);
+    var buf: [4096]u8 = undefined;
+    // /proc/partitions reports a stat size of 0; positional reads based on
+    // that size would return nothing, so this must stream instead.
+    var reader = file.readerStreaming(io, &buf);
+    return reader.interface.allocRemaining(allocator, .limited(1 << 20));
 }
 
 fn printPlan(allocator: std.mem.Allocator, out: anytype, cfg: config.Config) !void {

@@ -2,7 +2,8 @@
 
 # slackinstall
 
-a minimal, non-interactive-friendly installer for slackware, written in zig.
+a minimal installer for slackware, written in zig. interactive TUI by
+default, JSON config for scripted installs.
 
 <a href="https://count.owenewans.org/owenewans/slackinstall?theme=moebooru-h&notitle"><img src="https://count.owenewans.org/owenewans/slackinstall?theme=moebooru-h&notitle" alt="repository views"></a>
 
@@ -18,9 +19,11 @@ profiles. `slackinstall` is a single static binary that:
 - builds package lists directly from slackware 15.0's own tagfiles (no
   re-invented package metadata), collapsed into three profiles: `minimal`,
   `server`, `desktop`
-- takes a single JSON config file and runs non-interactively (`plan` to
-  preview, `apply` to execute)
-- never touches a disk without an explicit `--yes-i-am-sure` flag
+- `install` walks through numbered menus (pick a real detected disk, profile,
+  DNS mode, swap size) and shows the exact plan before asking for confirmation
+- `plan`/`apply` take a single JSON config file for scripted, unattended
+  installs (`plan` previews, `apply -y` executes)
+- never touches a disk without confirmation, interactive or explicit
 - generates native slackware config: `/etc/rc.d/rc.inet1.conf`, `/etc/HOSTNAME`,
   `/etc/lilo.conf`, and an unbound forward-zone stanza for plain, DoT or DoH
   resolution
@@ -30,7 +33,7 @@ profiles. `slackinstall` is a single static binary that:
 Early. Package profile generation, config validation, disk-plan generation
 and config-file rendering (network, DNS, LILO) are implemented and unit
 tested. Actual privileged execution (`apply` without dry-run: partitioning,
-`installpkg`, chroot, `lilo`) is not wired up yet — `apply` currently always
+`installpkg`, chroot, `lilo`) is not wired up yet - `apply` currently always
 runs its disk steps in dry-run mode. See [Roadmap](#roadmap).
 
 ## Install
@@ -42,14 +45,17 @@ curl -fsSL https://raw.githubusercontent.com/owenewans/slackinstall/master/insta
 ## Usage
 
 ```sh
+# interactive: pick a disk, profile, DNS mode; confirms before touching anything
+slackinstall install
+
 # list the packages a profile would install
 slackinstall profile server
 
-# preview a full install plan, no changes made
+# scripted: preview a full install plan, no changes made
 slackinstall plan --config config.json
 
-# execute (currently still dry-run internally, see Status)
-slackinstall apply --config config.json --yes-i-am-sure
+# scripted: execute (currently still dry-run internally, see Status)
+slackinstall apply --config config.json -y
 ```
 
 `config.json`:
