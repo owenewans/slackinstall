@@ -13,7 +13,7 @@ default, JSON config for scripted installs.
 
 Slackware's stock `setup` installer works, but it is menu-heavy and has no
 config-driven install mode. `slackinstall` is a single static binary for
-Slackware64 15.0 that:
+Slackware 15.0, built separately for `x86_64` and `x86` (i686), that:
 
 - offers `minimal`, `server` and `desktop` profiles derived from Slackware's
   native tagfiles and package tree
@@ -37,8 +37,17 @@ installs the 83-package minimal profile, boots it through LILO, logs in with
 the configured root password, and verifies runtime libraries, DHCP, ping,
 DNS persistence, hostname, `fstab`, swap and `/dev/shm`.
 
-Current scope is x86_64, legacy BIOS and LILO. Package checksums are not yet
-verified before `installpkg`; use a trusted mirror. See [Limitations](#limitations).
+The `x86_64` build carries this same real-install, real-boot QEMU
+verification. The `x86` (i686) build targets the plain (non-`slackware64`)
+Slackware 15.0 package tree with its own independently-verified package
+index (see [Profiles](#profiles)), and the cross-compiled binary is checked
+under `qemu-i386` user-mode emulation, but has not been through the same
+destructive install-and-boot QEMU test as `x86_64` - no bootable 32-bit
+install DVD image was available to run it against. If you install on real
+32-bit hardware, treat it as less battle-tested and keep a way to reboot
+from other media until you've confirmed it boots. Legacy BIOS and LILO
+only. Package checksums are not yet verified before `installpkg`; use a
+trusted mirror. See [Limitations](#limitations).
 
 ## Install
 
@@ -91,6 +100,11 @@ slackinstall apply --config config.json -y
 }
 ```
 
+`package_mirror` is optional: it defaults to the `slackware64` tree on an
+`x86_64` build and the `slackware` (32-bit) tree on an `x86` build, matching
+that binary's package index. Only override it to point at a different
+mirror host, not to switch architectures within the same binary.
+
 `network_interface` selects which NIC DHCP runs on, both during install and
 in the target's `/etc/rc.d/rc.inet1.conf`. `install` detects real interfaces
 from `/sys/class/net` and prompts for one instead of assuming `eth0`; `apply`
@@ -104,8 +118,13 @@ account remains locked.
 ## Profiles
 
 Profiles are computed from Slackware 15.0 tagfiles embedded under
-`src/data/tagfiles/`. The package index is frozen to the Slackware64 15.0
-package tree.
+`src/data/tagfiles/`, shared by both architectures (the same packages are
+tagged `ADD`/`REC`/`OPT`/`SKP` on both trees for a given release). Each
+build embeds its own frozen package index - `src/data/pkgindex.tsv` for
+`x86_64` (the `slackware64` tree), `src/data/pkgindex-x86.tsv` for `x86`
+(the plain `slackware` tree) - generated from that architecture's real
+`PACKAGES.TXT`, since build numbers per package are not always identical
+between the two trees.
 
 | profile | selection |
 |---------|-----------|
@@ -119,10 +138,15 @@ package tree.
 zig build test
 zig build run -- plan --config config.json
 zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe
+zig build -Dtarget=x86-linux-musl -Doptimize=ReleaseSafe
 ```
 
 The explicit target is important for a portable baseline CPU binary. A default
 native build may use instructions available only on the build machine.
+`builtin.target.cpu.arch` at comptime picks the matching package index and
+default mirror (see [Profiles](#profiles)), so cross-compiling to `x86`
+produces a binary for 32-bit Slackware, not a 64-bit one that happens to run
+under compatibility mode.
 
 Run the destructive end-to-end test only against its disposable qcow2 image:
 
@@ -135,7 +159,9 @@ details.
 
 ## Limitations
 
-- Slackware64 15.0 package tree only
+- Slackware 15.0 package trees only (`slackware64` and `slackware`)
+- the `x86` (32-bit) build has not been through a destructive install-and-boot
+  QEMU test, unlike `x86_64` - see [Status](#status)
 - legacy BIOS and LILO only, no UEFI bootloader
 - DHCP only; static addressing is not implemented (interface selection is,
   see `network_interface` above)

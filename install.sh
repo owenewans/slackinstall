@@ -12,6 +12,7 @@ esac
 
 case "$(uname -m)" in
     x86_64|amd64) TARGET=x86_64-linux-musl ;;
+    i386|i486|i586|i686) TARGET=x86-linux-musl ;;
     *) printf 'error: unsupported architecture: %s\n' "$(uname -m)" >&2; exit 1 ;;
 esac
 

@@ -1,25 +1,41 @@
 // maps short package names (as used in tagfiles/profiles) to their exact,
-// versioned filename and repository location within slackware64 15.0, e.g.
-// "aaa_base" -> "a/aaa_base-15.0-x86_64-3.txz". Generated once from the
-// official PACKAGES.TXT and embedded, same approach as the tagfiles: this is
-// a frozen snapshot of slackware 15.0, not a live index.
+// versioned filename and repository location within a slackware 15.0
+// package tree, e.g. "aaa_base" -> "a/aaa_base-15.0-x86_64-3.txz". Generated
+// once from the official PACKAGES.TXT of each architecture and embedded,
+// same approach as the tagfiles: this is a frozen snapshot of slackware
+// 15.0, not a live index.
+//
+// Two package trees exist upstream with independently versioned build
+// numbers per package (they are not a simple find/replace of the arch
+// tag), so each architecture embeds its own generated index rather than
+// deriving one from the other at runtime.
 const std = @import("std");
+const builtin = @import("builtin");
 
-const raw = @embedFile("../data/pkgindex.tsv");
+const raw = switch (builtin.target.cpu.arch) {
+    .x86_64 => @embedFile("../data/pkgindex.tsv"),
+    .x86 => @embedFile("../data/pkgindex-x86.tsv"),
+    else => @compileError("slackinstall only supports x86_64 and x86 (i686) targets"),
+};
 
 pub const Entry = struct {
     name: []const u8,
-    /// relative path under the slackware64 tree, e.g. "a/aaa_base-15.0-x86_64-3.txz"
+    /// relative path under the slackware package tree, e.g. "a/aaa_base-15.0-x86_64-3.txz"
     path: []const u8,
 };
 
-/// Parses the embedded index. Caller owns the returned slice; entries
-/// reference the embedded data directly (no allocation per string).
+/// Parses the embedded index for this build's target architecture. Caller
+/// owns the returned slice; entries reference the embedded data directly
+/// (no allocation per string).
 pub fn parse(allocator: std.mem.Allocator) ![]Entry {
+    return parseRaw(allocator, raw);
+}
+
+fn parseRaw(allocator: std.mem.Allocator, data: []const u8) ![]Entry {
     var entries: std.ArrayList(Entry) = .empty;
     errdefer entries.deinit(allocator);
 
-    var lines = std.mem.splitScalar(u8, raw, '\n');
+    var lines = std.mem.splitScalar(u8, data, '\n');
     while (lines.next()) |line| {
         if (line.len == 0) continue;
         const sep = std.mem.indexOfScalar(u8, line, '\t') orelse continue;
@@ -74,6 +90,35 @@ test "packageUrl builds the full mirror url" {
         "http://mirror.example/slackware64/a/bash-5.1.016-x86_64-1.txz",
         url,
     );
+}
+
+test "x86_64 and x86 package indexes cover the exact same package names" {
+    // Each architecture's index is generated independently from that
+    // architecture's real PACKAGES.TXT (build numbers can differ between
+    // trees for the same package), so this only checks name parity, not
+    // that paths match - see how src/data/pkgindex-x86.tsv was generated.
+    const allocator = std.testing.allocator;
+    const raw_x86_64 = @embedFile("../data/pkgindex.tsv");
+    const raw_x86 = @embedFile("../data/pkgindex-x86.tsv");
+
+    const entries_x86_64 = try parseRaw(allocator, raw_x86_64);
+    defer allocator.free(entries_x86_64);
+    const entries_x86 = try parseRaw(allocator, raw_x86);
+    defer allocator.free(entries_x86);
+
+    try std.testing.expectEqual(entries_x86_64.len, entries_x86.len);
+    for (entries_x86_64) |e| {
+        if (find(entries_x86, e.name) == null) {
+            std.debug.print("present in x86_64 index but missing from x86 index: {s}\n", .{e.name});
+            return error.MissingPackage;
+        }
+    }
+    for (entries_x86) |e| {
+        if (find(entries_x86_64, e.name) == null) {
+            std.debug.print("present in x86 index but missing from x86_64 index: {s}\n", .{e.name});
+            return error.MissingPackage;
+        }
+    }
 }
 
 test "every tagfile-referenced package resolves in the index" {

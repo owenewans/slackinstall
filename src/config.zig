@@ -1,9 +1,18 @@
 // non-interactive install configuration, analogous to archinstall's
 // user_configuration.json. loaded from a JSON file passed via --config.
 const std = @import("std");
+const builtin = @import("builtin");
 const profile = @import("pkg/profile.zig");
 
-pub const default_package_mirror = "http://slackware.osuosl.org/slackware64-15.0/slackware64";
+/// Matches the architecture this binary was built for: an x86_64 build
+/// defaults to the slackware64 tree, an x86 build to the plain slackware
+/// (32-bit) tree. Both trees ship the same package set for 15.0 (see
+/// src/pkg/index.zig), just built for different CPUs.
+pub const default_package_mirror = switch (builtin.target.cpu.arch) {
+    .x86_64 => "http://slackware.osuosl.org/slackware64-15.0/slackware64",
+    .x86 => "http://slackware.osuosl.org/slackware-15.0/slackware",
+    else => @compileError("slackinstall only supports x86_64 and x86 (i686) targets"),
+};
 
 pub const DnsMode = enum {
     plain, // classic /etc/resolv.conf nameserver entries

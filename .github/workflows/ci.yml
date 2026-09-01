@@ -23,13 +23,16 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [x86_64-linux-musl, x86-linux-musl]
     steps:
       - uses: actions/checkout@v4
       - run: |
           curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" | tar -xJ
           echo "$PWD/zig-x86_64-linux-${ZIG_VERSION}" >> "$GITHUB_PATH"
-      - run: zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSmall
+      - run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSmall
       - uses: actions/upload-artifact@v4
         with:
-          name: slackinstall-x86_64-linux-musl
+          name: slackinstall-${{ matrix.target }}
           path: zig-out/bin/slackinstall
