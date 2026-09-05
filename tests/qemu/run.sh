@@ -3,11 +3,11 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd "$SCRIPT_DIR/../.." && pwd)
-CACHE_DIR=${owenslackinstall_QEMU_DIR:-"$HOME/.cache/owenslackinstall-qemu"}
+CACHE_DIR=${OWENSLACKINSTALL_QEMU_DIR:-"$HOME/.cache/owenslackinstall-qemu"}
 ISO=${SLACKWARE_ISO:-}
 ISO_MD5=f8418ef0ec2c0a205adf5dbc2f2a1971
-HTTP_PORT=${owenslackinstall_QEMU_PORT:-18099}
-DISK_SIZE=${owenslackinstall_QEMU_DISK_SIZE:-8G}
+HTTP_PORT=${OWENSLACKINSTALL_QEMU_PORT:-18099}
+DISK_SIZE=${OWENSLACKINSTALL_QEMU_DISK_SIZE:-8G}
 QEMU_BIN=${QEMU_BIN:-qemu-system-x86_64}
 
 if [ -z "$ISO" ]; then

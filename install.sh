@@ -2,8 +2,8 @@
 set -eu
 
 REPOSITORY=owenewans/owenslackinstall
-VERSION=${owenslackinstall_VERSION:-latest}
-INSTALL_DIR=${owenslackinstall_INSTALL_DIR:-/usr/local/bin}
+VERSION=${OWENSLACKINSTALL_VERSION:-latest}
+INSTALL_DIR=${OWENSLACKINSTALL_INSTALL_DIR:-/usr/local/bin}
 
 case "$(uname -s)" in
     Linux) ;;
@@ -29,9 +29,9 @@ ASSET="owenslackinstall-$TARGET"
 # pass any extra flags. The proxy fetches live from GitHub on every request
 # (see https://github.com/owenewans/owenslackinstall/blob/master/readme.md) so
 # it can't serve a stale binary.
-MIRROR_BASE=${owenslackinstall_MIRROR_BASE:-http://src.owenewans.org/gh-release}
-if [ -n "${owenslackinstall_DOWNLOAD_BASE:-}" ]; then
-    PRIMARY_BASE=${owenslackinstall_DOWNLOAD_BASE%/}
+MIRROR_BASE=${OWENSLACKINSTALL_MIRROR_BASE:-http://src.owenewans.org/gh-release}
+if [ -n "${OWENSLACKINSTALL_DOWNLOAD_BASE:-}" ]; then
+    PRIMARY_BASE=${OWENSLACKINSTALL_DOWNLOAD_BASE%/}
     FALLBACK_BASE=""
 elif [ "$VERSION" = latest ]; then
     PRIMARY_BASE="https://github.com/$REPOSITORY/releases/latest/download"

@@ -26,5 +26,5 @@ SLACKWARE_ISO=/path/to/slackware64-15.0-install-dvd.iso tests/qemu/run.sh
 The ISO is verified against MD5
 `f8418ef0ec2c0a205adf5dbc2f2a1971`. Selected Slackware packages are cached
 under `~/.cache/owenslackinstall-qemu/mirror`; each run gets a separate directory
-containing its disk and console logs. Set `owenslackinstall_QEMU_DIR` to use a
+containing its disk and console logs. Set `OWENSLACKINSTALL_QEMU_DIR` to use a
 different cache location.

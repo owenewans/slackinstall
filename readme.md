@@ -74,7 +74,7 @@ bare Slackware live environment) can't complete a handshake with GitHub's
 release CDN - it automatically retries once through a small live
 pass-through proxy at `src.owenewans.org`, with no extra flags needed. The
 proxy re-fetches the exact requested asset from GitHub on every request, so
-it never serves anything stale. Set `owenslackinstall_DOWNLOAD_BASE` to skip
+it never serves anything stale. Set `OWENSLACKINSTALL_DOWNLOAD_BASE` to skip
 both and use your own source instead.
 
 ## Usage
