@@ -51,16 +51,16 @@ expect {
 send "stty -echo\r"
 expect "# "
 
-send "mkdir -p /mnt/payload; for d in /dev/sr0 /dev/sr1; do mount -t iso9660 \$d /mnt/payload >/dev/null 2>&1 || continue; if test -x /mnt/payload/slackinstall; then break; fi; umount /mnt/payload; done; if test -x /mnt/payload/slackinstall; then echo __PAYLOAD_OK__; else echo __PAYLOAD_FAIL__; fi\r"
+send "mkdir -p /mnt/payload; for d in /dev/sr0 /dev/sr1; do mount -t iso9660 \$d /mnt/payload >/dev/null 2>&1 || continue; if test -x /mnt/payload/owenslackinstall; then break; fi; umount /mnt/payload; done; if test -x /mnt/payload/owenslackinstall; then echo __PAYLOAD_OK__; else echo __PAYLOAD_FAIL__; fi\r"
 expect {
     "__PAYLOAD_OK__" {}
     "__PAYLOAD_FAIL__" { puts stderr "error: QEMU payload CD not found"; exit 1 }
     timeout { puts stderr "error: timed out locating QEMU payload"; exit 1 }
 }
 expect "# "
-send "cp /mnt/payload/slackinstall /tmp/slackinstall; chmod 755 /tmp/slackinstall; cp /mnt/payload/test-config.json /tmp/test-config.json\r"
+send "cp /mnt/payload/owenslackinstall /tmp/owenslackinstall; chmod 755 /tmp/owenslackinstall; cp /mnt/payload/test-config.json /tmp/test-config.json\r"
 expect "# "
-send "if /tmp/slackinstall plan --config /tmp/test-config.json; then echo __PLAN_OK__; else echo __PLAN_FAIL__; fi\r"
+send "if /tmp/owenslackinstall plan --config /tmp/test-config.json; then echo __PLAN_OK__; else echo __PLAN_FAIL__; fi\r"
 expect {
     "__PLAN_OK__" {}
     "__PLAN_FAIL__" { puts stderr "error: installer plan failed"; exit 1 }
@@ -68,7 +68,7 @@ expect {
 }
 expect "# "
 
-send "/tmp/slackinstall apply --config /tmp/test-config.json -y >/tmp/install.log 2>&1; status=\$?; tail -120 /tmp/install.log; if test \$status -eq 0; then echo __INSTALL_OK__; else echo __INSTALL_FAIL__; fi\r"
+send "/tmp/owenslackinstall apply --config /tmp/test-config.json -y >/tmp/install.log 2>&1; status=\$?; tail -120 /tmp/install.log; if test \$status -eq 0; then echo __INSTALL_OK__; else echo __INSTALL_FAIL__; fi\r"
 set timeout 1800
 expect {
     "__INSTALL_OK__" {}

@@ -15,7 +15,7 @@ pub fn renderResolvConf(allocator: std.mem.Allocator, servers: []const []const u
 
 /// Renders an unbound forward-zone stanza for DoT (port 853, TLS) or DoH
 /// (via unbound's forward-tls-upstream against a resolver's DoH-compatible
-/// TLS endpoint). Written to /etc/unbound/conf.d/slackinstall-forward.conf.
+/// TLS endpoint). Written to /etc/unbound/conf.d/owenslackinstall-forward.conf.
 pub fn renderUnboundForward(
     allocator: std.mem.Allocator,
     mode: config.DnsMode,

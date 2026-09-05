@@ -1,13 +1,13 @@
 #!/bin/sh
 set -eu
 
-REPOSITORY=owenewans/slackinstall
-VERSION=${SLACKINSTALL_VERSION:-latest}
-INSTALL_DIR=${SLACKINSTALL_INSTALL_DIR:-/usr/local/bin}
+REPOSITORY=owenewans/owenslackinstall
+VERSION=${owenslackinstall_VERSION:-latest}
+INSTALL_DIR=${owenslackinstall_INSTALL_DIR:-/usr/local/bin}
 
 case "$(uname -s)" in
     Linux) ;;
-    *) printf 'error: slackinstall release binaries support Linux only\n' >&2; exit 1 ;;
+    *) printf 'error: owenslackinstall release binaries support Linux only\n' >&2; exit 1 ;;
 esac
 
 case "$(uname -m)" in
@@ -16,7 +16,7 @@ case "$(uname -m)" in
     *) printf 'error: unsupported architecture: %s\n' "$(uname -m)" >&2; exit 1 ;;
 esac
 
-ASSET="slackinstall-$TARGET"
+ASSET="owenslackinstall-$TARGET"
 
 # A user-supplied download base is used as-is, with no automatic fallback,
 # since they've explicitly chosen where to fetch from. Otherwise GitHub
@@ -27,11 +27,11 @@ ASSET="slackinstall-$TARGET"
 # around directly (TLS version/cipher support, TLS fingerprint filtering,
 # etc.), so this self-heals without the caller needing to know about it or
 # pass any extra flags. The proxy fetches live from GitHub on every request
-# (see https://github.com/owenewans/slackinstall/blob/master/readme.md) so
+# (see https://github.com/owenewans/owenslackinstall/blob/master/readme.md) so
 # it can't serve a stale binary.
-MIRROR_BASE=${SLACKINSTALL_MIRROR_BASE:-http://src.owenewans.org/gh-release}
-if [ -n "${SLACKINSTALL_DOWNLOAD_BASE:-}" ]; then
-    PRIMARY_BASE=${SLACKINSTALL_DOWNLOAD_BASE%/}
+MIRROR_BASE=${owenslackinstall_MIRROR_BASE:-http://src.owenewans.org/gh-release}
+if [ -n "${owenslackinstall_DOWNLOAD_BASE:-}" ]; then
+    PRIMARY_BASE=${owenslackinstall_DOWNLOAD_BASE%/}
     FALLBACK_BASE=""
 elif [ "$VERSION" = latest ]; then
     PRIMARY_BASE="https://github.com/$REPOSITORY/releases/latest/download"
@@ -89,17 +89,17 @@ fi
 
 install_binary() {
     mkdir -p "$INSTALL_DIR"
-    install -m 755 "$TEMP_DIR/$ASSET" "$INSTALL_DIR/slackinstall"
+    install -m 755 "$TEMP_DIR/$ASSET" "$INSTALL_DIR/owenslackinstall"
 }
 
 if [ "$(id -u)" -eq 0 ] || { [ -d "$INSTALL_DIR" ] && [ -w "$INSTALL_DIR" ]; }; then
     install_binary
 elif command -v sudo >/dev/null 2>&1; then
     sudo mkdir -p "$INSTALL_DIR"
-    sudo install -m 755 "$TEMP_DIR/$ASSET" "$INSTALL_DIR/slackinstall"
+    sudo install -m 755 "$TEMP_DIR/$ASSET" "$INSTALL_DIR/owenslackinstall"
 else
     printf 'error: cannot write to %s and sudo is unavailable\n' "$INSTALL_DIR" >&2
     exit 1
 fi
 
-printf 'installed slackinstall to %s/slackinstall\n' "$INSTALL_DIR"
+printf 'installed owenslackinstall to %s/owenslackinstall\n' "$INSTALL_DIR"

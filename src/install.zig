@@ -10,7 +10,7 @@ const dns = @import("dns.zig");
 const boot = @import("boot.zig");
 const pkgindex = @import("pkg/index.zig");
 
-pub const target_root = "/mnt/slackinstall";
+pub const target_root = "/mnt/owenslackinstall";
 
 pub const Progress = struct {
     out: *std.Io.Writer,
@@ -135,7 +135,7 @@ fn applyRootPassword(progress: Progress, executor: disk.Executor, cfg: config.Co
 /// script the caller must provide, and slackware's live install environment
 /// ships none by default. without this, "network is unreachable" even
 /// after "lease obtained". this writes a minimal hook and runs udhcpc once.
-const udhcpc_hook_path = "/tmp/slackinstall-udhcpc.sh";
+const udhcpc_hook_path = "/tmp/owenslackinstall-udhcpc.sh";
 const udhcpc_hook_script =
     \\#!/bin/sh
     \\case "$1" in
@@ -196,7 +196,7 @@ fn installPackages(allocator: std.mem.Allocator, io: std.Io, progress: Progress,
     const names = try cfg.profile.packageList(allocator);
     const entries = try pkgindex.parse(allocator);
 
-    const cache_dir = "/var/cache/slackinstall/packages";
+    const cache_dir = "/var/cache/owenslackinstall/packages";
     try executor.run(.{ .argv = &.{ "mkdir", "-p", cache_dir }, .description = "create package cache" });
 
     progress.step("installing {d} packages", .{names.len});
@@ -254,7 +254,7 @@ fn writeTargetConfig(allocator: std.mem.Allocator, io: std.Io, progress: Progres
             // (e.g. from SlackBuilds) after first boot; until then, fall
             // back to plain resolution so the system has working DNS.
             const forward = try dns.renderUnboundForward(allocator, cfg.dns_mode, cfg.dns_servers);
-            try writeTargetFile(io, "/etc/unbound/conf.d/slackinstall-forward.conf", forward);
+            try writeTargetFile(io, "/etc/unbound/conf.d/owenslackinstall-forward.conf", forward);
 
             const resolv = try dns.renderResolvConf(allocator, cfg.dns_servers);
             try writeTargetFile(io, "/etc/resolv.conf", resolv);

@@ -1,18 +1,18 @@
 <div align="center">
 
-# slackinstall
+# owenslackinstall
 
 a minimal installer for slackware, written in zig. interactive TUI by
 default, JSON config for scripted installs.
 
-<a href="https://count.owenewans.org/owenewans/slackinstall?theme=moebooru-h&notitle"><img src="https://count.owenewans.org/owenewans/slackinstall?theme=moebooru-h&notitle" alt="repository views"></a>
+<a href="https://count.owenewans.org/owenewans/owenslackinstall?theme=moebooru-h&notitle"><img src="https://count.owenewans.org/owenewans/owenslackinstall?theme=moebooru-h&notitle" alt="repository views"></a>
 
 `zig` `slackware` `installer` `sfdisk` `lilo` `unbound`
 
 </div>
 
 Slackware's stock `setup` installer works, but it is menu-heavy and has no
-config-driven install mode. `slackinstall` is a single static binary for
+config-driven install mode. `owenslackinstall` is a single static binary for
 Slackware 15.0, built separately for `x86_64` and `x86` (i686), that:
 
 - offers `minimal`, `server` and `desktop` profiles derived from Slackware's
@@ -52,20 +52,20 @@ trusted mirror. See [Limitations](#limitations).
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/owenewans/slackinstall/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/owenewans/owenslackinstall/master/install.sh | sh
 ```
 
 or, from the self-hosted mirror:
 
 ```sh
-curl -fsSL https://src.owenewans.org/slackinstall/-/install.sh?raw | sh
+curl -fsSL https://src.owenewans.org/owenslackinstall/-/install.sh?raw | sh
 ```
 
 The official Slackware install DVD's live environment ships busybox `wget`,
 not `curl`; from that shell, use:
 
 ```sh
-wget -q -O - "https://src.owenewans.org/slackinstall/-/install.sh?raw" | sh
+wget -q -O - "https://src.owenewans.org/owenslackinstall/-/install.sh?raw" | sh
 ```
 
 `install.sh` downloads the release binary from GitHub by default. If that
@@ -74,23 +74,23 @@ bare Slackware live environment) can't complete a handshake with GitHub's
 release CDN - it automatically retries once through a small live
 pass-through proxy at `src.owenewans.org`, with no extra flags needed. The
 proxy re-fetches the exact requested asset from GitHub on every request, so
-it never serves anything stale. Set `SLACKINSTALL_DOWNLOAD_BASE` to skip
+it never serves anything stale. Set `owenslackinstall_DOWNLOAD_BASE` to skip
 both and use your own source instead.
 
 ## Usage
 
 ```sh
 # interactive: pick a disk, profile, DNS mode; confirms before touching anything
-slackinstall install
+owenslackinstall install
 
 # list the packages a profile would install
-slackinstall profile server
+owenslackinstall profile server
 
 # scripted: preview a full install plan, no changes made
-slackinstall plan --config config.json
+owenslackinstall plan --config config.json
 
 # scripted: execute the destructive install
-slackinstall apply --config config.json -y
+owenslackinstall apply --config config.json -y
 ```
 
 `config.json`:

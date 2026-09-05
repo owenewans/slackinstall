@@ -22,15 +22,15 @@ jobs:
       - run: |
           for target in x86_64-linux-musl x86-linux-musl; do
             zig build -Dtarget="$target" -Doptimize=ReleaseSmall
-            mv zig-out/bin/slackinstall "slackinstall-$target"
-            sha256sum "slackinstall-$target" > "slackinstall-$target.sha256"
+            mv zig-out/bin/owenslackinstall "owenslackinstall-$target"
+            sha256sum "owenslackinstall-$target" > "owenslackinstall-$target.sha256"
           done
       - run: >-
           gh release create "$GITHUB_REF_NAME"
-          slackinstall-x86_64-linux-musl
-          slackinstall-x86_64-linux-musl.sha256
-          slackinstall-x86-linux-musl
-          slackinstall-x86-linux-musl.sha256
+          owenslackinstall-x86_64-linux-musl
+          owenslackinstall-x86_64-linux-musl.sha256
+          owenslackinstall-x86-linux-musl
+          owenslackinstall-x86-linux-musl.sha256
           --title "$GITHUB_REF_NAME"
           --generate-notes
         env:

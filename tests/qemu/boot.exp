@@ -29,7 +29,7 @@ expect {
 }
 set timeout 30
 expect {
-    "Password:" { send "slackinstall-test\r" }
+    "Password:" { send "owenslackinstall-test\r" }
     timeout { puts stderr "error: root password prompt not shown"; exit 1 }
 }
 expect {

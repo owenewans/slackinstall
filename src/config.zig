@@ -11,7 +11,7 @@ const profile = @import("pkg/profile.zig");
 pub const default_package_mirror = switch (builtin.target.cpu.arch) {
     .x86_64 => "http://slackware.osuosl.org/slackware64-15.0/slackware64",
     .x86 => "http://slackware.osuosl.org/slackware-15.0/slackware",
-    else => @compileError("slackinstall only supports x86_64 and x86 (i686) targets"),
+    else => @compileError("owenslackinstall only supports x86_64 and x86 (i686) targets"),
 };
 
 pub const DnsMode = enum {

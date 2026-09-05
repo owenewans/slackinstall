@@ -19,15 +19,15 @@ test {
 }
 
 const usage =
-    \\slackinstall - a minimal installer for Slackware.
+    \\owenslackinstall - a minimal installer for Slackware.
     \\
     \\usage:
-    \\  slackinstall install                  interactive, menu-driven install
-    \\  slackinstall plan   --config <file>    print the install plan from a json config
-    \\  slackinstall apply  --config <file> -y execute a json config (scripted installs)
-    \\  slackinstall profile <minimal|server|desktop>
+    \\  owenslackinstall install                  interactive, menu-driven install
+    \\  owenslackinstall plan   --config <file>    print the install plan from a json config
+    \\  owenslackinstall apply  --config <file> -y execute a json config (scripted installs)
+    \\  owenslackinstall profile <minimal|server|desktop>
     \\                                         list the packages a profile installs
-    \\  slackinstall --help
+    \\  owenslackinstall --help
     \\
     \\nothing is written to disk without confirmation: `install` asks before
     \\formatting anything, `apply` requires -y/--confirm.
@@ -161,7 +161,7 @@ fn runInteractiveInstall(
         .in = &stdin_reader.interface,
     };
 
-    try session.print("slackinstall - interactive install\n", .{});
+    try session.print("owenslackinstall - interactive install\n", .{});
 
     // disk selection: read real disks from /proc/partitions instead of
     // making the user guess or type a raw device path from memory.
@@ -323,7 +323,7 @@ fn readNetworkInterfaceNames(allocator: std.mem.Allocator, io: std.Io) ![][]cons
 }
 
 fn printPlan(allocator: std.mem.Allocator, out: anytype, cfg: config.Config) !void {
-    try out.print("slackinstall plan for {s} on {s}\n", .{ cfg.hostname, cfg.disk });
+    try out.print("owenslackinstall plan for {s} on {s}\n", .{ cfg.hostname, cfg.disk });
     try out.print("profile: {s}\n\n", .{@tagName(cfg.profile)});
 
     const layout: disk.Layout = .{ .disk = cfg.disk, .swap_mb = cfg.swap_mb };

@@ -3,11 +3,11 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd "$SCRIPT_DIR/../.." && pwd)
-CACHE_DIR=${SLACKINSTALL_QEMU_DIR:-"$HOME/.cache/slackinstall-qemu"}
+CACHE_DIR=${owenslackinstall_QEMU_DIR:-"$HOME/.cache/owenslackinstall-qemu"}
 ISO=${SLACKWARE_ISO:-}
 ISO_MD5=f8418ef0ec2c0a205adf5dbc2f2a1971
-HTTP_PORT=${SLACKINSTALL_QEMU_PORT:-18099}
-DISK_SIZE=${SLACKINSTALL_QEMU_DISK_SIZE:-8G}
+HTTP_PORT=${owenslackinstall_QEMU_PORT:-18099}
+DISK_SIZE=${owenslackinstall_QEMU_DISK_SIZE:-8G}
 QEMU_BIN=${QEMU_BIN:-qemu-system-x86_64}
 
 if [ -z "$ISO" ]; then
@@ -52,7 +52,7 @@ printf '%s\n' '==> running unit tests and building baseline x86_64 installer'
     zig build test
     zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe
 )
-BINARY="$REPO_ROOT/zig-out/bin/slackinstall"
+BINARY="$REPO_ROOT/zig-out/bin/owenslackinstall"
 
 "$BINARY" profile minimal | while IFS= read -r line; do
     case "$line" in
@@ -84,8 +84,8 @@ if [ "$resolved" -ne "$expected" ]; then
     exit 1
 fi
 
-cp "$BINARY" "$PAYLOAD_DIR/slackinstall"
-chmod 755 "$PAYLOAD_DIR/slackinstall"
+cp "$BINARY" "$PAYLOAD_DIR/owenslackinstall"
+chmod 755 "$PAYLOAD_DIR/owenslackinstall"
 cat > "$PAYLOAD_DIR/test-config.json" <<EOF
 {
   "disk": "/dev/vda",
@@ -95,7 +95,7 @@ cat > "$PAYLOAD_DIR/test-config.json" <<EOF
   "dns_servers": ["9.9.9.9"],
   "package_mirror": "http://10.0.2.2:$HTTP_PORT/slackware64-15.0/slackware64",
   "swap_mb": 256,
-  "root_password": "slackinstall-test"
+  "root_password": "owenslackinstall-test"
 }
 EOF
 
